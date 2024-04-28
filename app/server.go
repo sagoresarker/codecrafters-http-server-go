@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+
 	// Uncomment this block to pass the first stage
 	"net"
 	"os"
@@ -19,9 +21,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = l.Accept()
+	conn, err := l.Accept()
 	if err != nil {
 		fmt.Println("Error accepting connection: ", err.Error())
+		os.Exit(1)
+	}
+
+	reader := bufio.NewReader(conn)
+
+	buf := make([]byte, 1024)
+
+	_, err = reader.Read(buf)
+
+	if err != nil {
+		fmt.Println("Error reading:", err.Error())
+		os.Exit(1)
+	}
+
+	response := []byte("HTTP/1.1 200 OK\r\n\r\n")
+
+	_, err = conn.Write(response)
+	if err != nil {
+		fmt.Println("Error writing:", err.Error())
 		os.Exit(1)
 	}
 }
