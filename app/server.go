@@ -61,27 +61,15 @@ func extractRequest(conn net.Conn) (*Request, error) {
 	}, nil
 }
 
-func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
-
-	l, err := net.Listen("tcp", "0.0.0.0:4221")
-	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
-		os.Exit(1)
-	}
-
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
 
 	req, err := extractRequest(conn)
 	if err != nil {
 		fmt.Println("Error reading request: ", err.Error())
-		os.Exit(1)
+		return
 	}
+
 	if req.Path == "/user-agent" {
 		userAgent, ok := req.Headers["User-Agent"]
 		if !ok {
@@ -95,7 +83,7 @@ func main() {
 		_, err = conn.Write(response)
 		if err != nil {
 			fmt.Println("Error writing response: ", err.Error())
-			os.Exit(1)
+			return
 		}
 	} else if strings.HasPrefix(req.Path, "/echo/") {
 		echoContent := strings.TrimPrefix(req.Path, "/echo/")
@@ -107,24 +95,47 @@ func main() {
 		_, err = conn.Write(response)
 		if err != nil {
 			fmt.Println("Error writing response: ", err.Error())
-			os.Exit(1)
+			return
 		}
 	} else {
 		switch req.Path {
 		case "/":
-			fmt.Println("case /")
 			_, err = conn.Write(append(HttpStatus.OK, []byte("\r\n")...))
 			if err != nil {
 				fmt.Println("Error writing response: ", err.Error())
-				os.Exit(1)
+				return
 			}
 		default:
-			fmt.Println("case 404")
 			_, err = conn.Write(HttpStatus.NOT_FOUND)
 			if err != nil {
 				fmt.Println("Error writing response: ", err.Error())
-				os.Exit(1)
+				return
 			}
 		}
 	}
+}
+
+func main() {
+	// You can use print statements as follows for debugging, they'll be visible when running tests.
+	fmt.Println("Logs from your program will appear here!")
+
+	l, err := net.Listen("tcp", "0.0.0.0:4221")
+	if err != nil {
+		fmt.Println("Failed to bind to port 4221")
+		os.Exit(1)
+	}
+
+	defer l.Close()
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		go handleConnection(conn)
+
+	}
+
 }
