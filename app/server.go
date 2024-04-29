@@ -1,9 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -61,7 +64,7 @@ func extractRequest(conn net.Conn) (*Request, error) {
 	}, nil
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, directory string) {
 	defer conn.Close()
 
 	req, err := extractRequest(conn)
@@ -70,7 +73,30 @@ func handleConnection(conn net.Conn) {
 		return
 	}
 
-	if req.Path == "/user-agent" {
+	if strings.HasPrefix(req.Path, "/files/") {
+		filename := strings.TrimPrefix(req.Path, "/files/")
+		filePath := filepath.Join(directory, filename)
+		fileContents, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			fmt.Println("Error reading file: ", err.Error())
+			_, err = conn.Write(HttpStatus.NOT_FOUND)
+			if err != nil {
+				fmt.Println("Error writing response: ", err.Error())
+			}
+			return
+		}
+
+		contentLengthHeader := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(fileContents))
+		response := append(HttpStatus.OK, []byte("Content-Type: application/octet-stream\r\n")...)
+		response = append(response, []byte(contentLengthHeader)...)
+		response = append(response, fileContents...)
+
+		_, err = conn.Write(response)
+		if err != nil {
+			fmt.Println("Error writing response: ", err.Error())
+			return
+		}
+	} else if req.Path == "/user-agent" {
 		userAgent, ok := req.Headers["User-Agent"]
 		if !ok {
 			userAgent = ""
@@ -119,6 +145,14 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
+	directory := flag.String("directory", "", "The directory to serve files from")
+	flag.Parse()
+
+	if *directory == "" {
+		fmt.Println("Please provide a directory using the --directory flag")
+	}
+	fmt.Printf("Home Directory: %v\n", *directory)
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -134,7 +168,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		go handleConnection(conn)
+		go handleConnection(conn, *directory)
 
 	}
 
