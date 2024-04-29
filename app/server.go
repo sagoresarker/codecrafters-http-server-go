@@ -28,8 +28,9 @@ var HttpMethod = httpMethods{
 }
 
 type Request struct {
-	Method string
-	Path   string
+	Method  string
+	Path    string
+	Headers map[string]string
 }
 
 func extractRequest(conn net.Conn) (*Request, error) {
@@ -40,13 +41,23 @@ func extractRequest(conn net.Conn) (*Request, error) {
 	}
 
 	rawReq := string(msg[:reqLen])
-	lines := strings.Split(rawReq, "\n")
-	method := strings.Split(lines[0], " ")[0]
-	path := strings.Split(lines[0], " ")[1]
+	lines := strings.Split(rawReq, "\r\n")
+	requestLine := strings.Split(lines[0], " ")
+	method := requestLine[0]
+	path := requestLine[1]
 
+	headers := make(map[string]string)
+	for i := 1; i < len(lines)-2; i++ {
+		headerParts := strings.Split(lines[i], ": ")
+
+		if len(headerParts) == 2 {
+			headers[headerParts[0]] = headerParts[1]
+		}
+	}
 	return &Request{
-		Method: method,
-		Path:   path,
+		Method:  method,
+		Path:    path,
+		Headers: headers,
 	}, nil
 }
 
@@ -71,8 +82,22 @@ func main() {
 		fmt.Println("Error reading request: ", err.Error())
 		os.Exit(1)
 	}
+	if req.Path == "/user-agent" {
+		userAgent, ok := req.Headers["User-Agent"]
+		if !ok {
+			userAgent = ""
+		}
+		contentLengthHeader := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(userAgent))
+		response := append(HttpStatus.OK, []byte("Content-Type: text/plain\r\n")...)
+		response = append(response, []byte(contentLengthHeader)...)
+		response = append(response, []byte(userAgent)...)
 
-	if strings.HasPrefix(req.Path, "/echo/") {
+		_, err = conn.Write(response)
+		if err != nil {
+			fmt.Println("Error writing response: ", err.Error())
+			os.Exit(1)
+		}
+	} else if strings.HasPrefix(req.Path, "/echo/") {
 		echoContent := strings.TrimPrefix(req.Path, "/echo/")
 		contentLengthHeader := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(echoContent))
 		response := append(HttpStatus.OK, []byte("Content-Type: text/plain\r\n")...)
